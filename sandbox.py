@@ -1,51 +1,62 @@
 import subprocess
-import tempfile
 import os
+import re
 
-def run_in_sandbox(code_string, timeout_seconds=5):
-    """
-    Takes a string of Python code, writes it to a temporary file, 
-    executes it safely, and returns the result.
-    """
-    # 1. Create a temporary file that automatically deletes itself later
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as temp_file:
-        temp_file.write(code_string)
-        temp_filepath = temp_file.name
-
-    try:
-        # 2. Execute the temporary file as a separate subprocess
-        result = subprocess.run(
-            ['python', temp_filepath], 
-            capture_output=True, 
-            text=True, 
-            timeout=timeout_seconds # Kills the code if it takes too long
-        )
+def run_in_sandbox(code_string):
+    """Executes Python code inside workspace/ and automatically installs missing imports."""
+    workspace_dir = os.path.join(os.path.dirname(__file__), "workspace")
+    os.makedirs(workspace_dir, exist_ok=True)
+    
+    script_path = os.path.join(workspace_dir, "temp_task.py")
+    with open(script_path, "w", encoding="utf-8") as f:
+        f.write(code_string)
         
-        # 3. Check if the code crashed or succeeded
-        if result.returncode == 0:
-            return {"status": "success", "output": result.stdout.strip()}
-        else:
-            return {"status": "error", "output": result.stderr.strip()}
+    for attempt in range(2): # Try running; if a module is missing, install it and retry once
+        try:
+            result = subprocess.run(
+                ["python", "temp_task.py"],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                cwd=workspace_dir
+            )
             
-    except subprocess.TimeoutExpired:
-        return {"status": "error", "output": f"Code execution exceeded {timeout_seconds} seconds and was killed."}
-        
-    finally:
-        # 4. Always clean up and delete the temporary file from the computer
-        if os.path.exists(temp_filepath):
-            os.remove(temp_filepath)
-
-# --- TEST THE SANDBOX ---
-if __name__ == "__main__":
-    print("Testing Omni-Daemon Sandbox...")
+            # Check if execution failed due to a missing module (ImportError / ModuleNotFoundError)
+            if result.returncode != 0 and attempt == 0:
+                stderr = result.stderr
+                match = re.search(r"No module named '(.+?)'", stderr)
+                if match:
+                    missing_module = match.group(1)
+                    print(f"[Sandbox] Missing module detected: '{missing_module}'. Installing...")
+                    # Automatically install the missing package
+                    install_res = subprocess.run(
+                        ["python", "-m", "pip", "install", missing_module],
+                        capture_output=True,
+                        text=True
+                    )
+                    if install_res.returncode == 0:
+                        continue # Retry running the script with the new package installed
+            
+            if result.returncode != 0:
+                return {
+                    "status": "error",
+                    "output": result.stderr.strip()
+                }
+                
+            return {
+                "status": "success",
+                "output": result.stdout.strip() if result.stdout.strip() else "Execution completed successfully (no console output)."
+            }
+            
+        except subprocess.TimeoutExpired:
+            return {
+                "status": "error",
+                "output": "Execution timed out (exceeded 15 seconds)."
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "output": str(e)
+            }
     
-    # Imagine the AI just generated this math script
-    ai_generated_code = """
-x = 50
-y = 100
-print(f"The calculated result is: {x * y}")
-"""
-    
-    # Run the AI code through our sandbox
-    response = run_in_sandbox(ai_generated_code)
-    print(response)
+    return {"status": "error", "output": "Failed to resolve dependencies and execute code."}

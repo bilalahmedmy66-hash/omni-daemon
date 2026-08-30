@@ -1,8 +1,23 @@
-from flask import Flask, request, jsonify
+import os
+import webbrowser
+from flask import Flask, request, jsonify, render_template_string
+from flask_cors import CORS
 from brain import synthesize_code
 from sandbox import run_in_sandbox
 
 app = Flask(__name__)
+CORS(app)
+
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+@app.route('/')
+def serve_ui():
+    """Directly reads and serves index.html as a text response."""
+    html_path = os.path.join(BASE_DIR, 'index.html')
+    if os.path.exists(html_path):
+        with open(html_path, 'r', encoding='utf-8') as f:
+            return render_template_string(f.read())
+    return "Error: index.html not found in directory!", 404
 
 @app.route('/omni/execute', methods=['POST'])
 def execute_intent():
@@ -14,15 +29,12 @@ def execute_intent():
         
     print(f"\n[1] Received intent: {intent}")
     
-    # Phase A: The Brain writes the code
     print("[2] Synthesizing code using AI...")
     generated_code = synthesize_code(intent)
     
-    # Phase B: The Sandbox runs the code safely
     print("[3] Executing code in Native Python Sandbox...")
     result = run_in_sandbox(generated_code)
     
-    # Phase C: Return the final output
     print("[4] Returning results to client.")
     return jsonify({
         "status": "success",
@@ -33,7 +45,8 @@ def execute_intent():
 
 if __name__ == "__main__":
     print("========================================")
-    print("   OMNI-DAEMON NATIVE SERVER RUNNING    ")
+    print("    OMNI-DAEMON STUDIO SERVER RUNNING    ")
     print("========================================")
-    # The server listens locally on port 5000
+    
+    webbrowser.open("http://127.0.0.1:5000/")
     app.run(host="127.0.0.1", port=5000)
