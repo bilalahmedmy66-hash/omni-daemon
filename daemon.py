@@ -1,5 +1,4 @@
 import os
-import webbrowser
 from flask import Flask, request, jsonify, render_template_string
 from flask_cors import CORS
 from brain import synthesize_code
@@ -48,5 +47,8 @@ if __name__ == "__main__":
     print("    OMNI-DAEMON STUDIO SERVER RUNNING    ")
     print("========================================")
     
-    webbrowser.open("http://127.0.0.1:5000/")
-    app.run(host="127.0.0.1", port=5000)
+    # Render assigns a dynamic port via the PORT environment variable
+    port = int(os.environ.get("PORT", 5000))
+    
+    # Bind to 0.0.0.0 to accept external cloud traffic
+    app.run(host="0.0.0.0", port=port)
