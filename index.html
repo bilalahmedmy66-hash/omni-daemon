@@ -581,7 +581,7 @@
     // don't override the "processing" seal state mid-invocation
     if (executeBtn.disabled) return;
     try {
-      await fetch("http://127.0.0.1:5000/omni/execute", { method: 'OPTIONS' });
+      await fetch('/omni/execute', { method: 'OPTIONS' });
       setSealState('online');
       statusText.textContent = "Daemon online";
     } catch (e) {
